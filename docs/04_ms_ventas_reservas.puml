@@ -1,0 +1,162 @@
+@startuml 04_ms_ventas_reservas
+title EduSaldo · MS Ventas y Reservas (8084) · db_ventas_reservas\nHU27–HU37 · Modelo de Dominio
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #1F4E79
+  ArrowColor #1F4E79
+}
+skinparam package {
+  BorderColor #1F4E79
+  BackgroundColor #EEF4FA
+}
+hide empty members
+
+package "MS Ventas y Reservas" {
+  enum EstadoReserva {
+    PENDIENTE
+    EN_PREPARACION
+    ETIQUETA_PENDIENTE
+    LISTA_PARA_RETIRO
+    ENTREGADA
+    CANCELADA
+  }
+
+  enum OrigenVenta {
+    RESERVA
+    DIRECTA
+  }
+
+  class Reserva <<Entity>> {
+    - id : Long
+    - codigo : String {unique}
+    - codigoBolsa : String [0..1]
+    - alumnoId : Long <<ref MS Alumnos>>
+    - apoderadoId : Long <<ref MS Auth>>
+    - fechaCreacion : LocalDateTime
+    - total : int
+    - estado : EstadoReserva
+    - fechaInicioPreparacion : LocalDateTime [0..1]
+    - fechaListaRetiro : LocalDateTime [0..1]
+    - preparadaPorId : Long [0..1] <<ref MS Auth>>
+    - fechaEntrega : LocalDateTime [0..1]
+    - entregadaPorId : Long [0..1] <<ref MS Auth>>
+    - fechaCancelacion : LocalDateTime [0..1]
+    - canceladaPorId : Long [0..1] <<ref MS Auth>>
+    - motivoCancelacion : String [0..1]
+    --
+    + iniciarPreparacion(encargadoId : Long) : void
+    + registrarEscaneoItem(productoId : Long) : void
+    + generarEtiquetaBolsa() : String
+    + marcarListaParaRetiro(encargadoId : Long) : void
+    + cancelar(encargadoId : Long, motivo : String) : void
+    + entregar(encargadoId : Long, codigoBolsaVerif : String) : Venta
+    + calcularTotal() : int
+    + isCompletamentePreparada() : boolean
+  }
+
+  class DetalleReserva <<Entity>> {
+    - id : Long
+    - productoId : Long <<ref MS Productos>>
+    - nombreProducto : String
+    - cantidad : int
+    - cantidadPreparada : int
+    - precioUnitario : int
+    --
+    + getSubtotal() : int
+    + registrarUnidadEscaneada() : void
+    + isCompleto() : boolean
+  }
+
+  class Venta <<Entity>> {
+    - id : Long
+    - numero : String {unique}
+    - reservaId : Long [0..1] <<ref Reserva>>
+    - alumnoId : Long <<ref MS Alumnos>>
+    - origen : OrigenVenta
+    - fecha : LocalDateTime
+    - total : int
+    - encargadoId : Long <<ref MS Auth>>
+    --
+    + calcularTotal() : int
+  }
+
+  class DetalleVenta <<Entity>> {
+    - id : Long
+    - productoId : Long <<ref MS Productos>>
+    - nombreProducto : String
+    - cantidad : int
+    - precioUnitario : int
+    - cantidadDevuelta : int
+    --
+    + getSubtotal() : int
+    + getCantidadDevolvible() : int
+    + registrarDevolucion(cant : int) : void
+  }
+
+  class Devolucion <<Entity>> {
+    - id : Long
+    - codigoDevolucion : String {unique}
+    - ventaId : Long <<ref Venta>>
+    - alumnoId : Long <<ref MS Alumnos>>
+    - fecha : LocalDateTime
+    - motivo : String
+    - totalReintegro : int
+    - encargadoId : Long <<ref MS Auth>>
+    --
+    + calcularTotalReintegro() : int
+  }
+
+  class DetalleDevolucion <<Entity>> {
+    - id : Long
+    - detalleVentaId : Long <<ref DetalleVenta>>
+    - productoId : Long <<ref MS Productos>>
+    - nombreProducto : String
+    - cantidad : int
+    - precioUnitarioReintegro : int
+    - montoReintegro : int
+    --
+    + getSubtotalReintegro() : int
+  }
+}
+
+Reserva "1" *-- "1..*" DetalleReserva
+Reserva "0..1" -- "0..1" Venta : origina >
+Venta "1" *-- "1..*" DetalleVenta
+Venta "1" *-- "0..*" Devolucion : genera >
+Devolucion "1" *-- "1..*" DetalleDevolucion
+DetalleDevolucion "0..*" --> "1" DetalleVenta : revierte >
+
+note right of Reserva
+  Ciclo de Reserva (libreria.js):
+  PENDIENTE → EN_PREPARACION (pistoleo) →
+  ETIQUETA_PENDIENTE (código bolsa) →
+  LISTA_PARA_RETIRO → ENTREGADA.
+  Cancelar libera saldo y stock reservado.
+  Entregar: valida código de bolsa y credencial;
+  crea Venta (origen RESERVA), debita saldo
+  definitivo y descuenta stock físico.
+end note
+
+note right of Venta
+  Venta DIRECTA (HU34): alumno >= 12 años
+  identificado por RUT presencialmente; total <= saldo
+  disponible; debita saldo y stock físico al instante.
+end note
+
+note bottom of Devolucion
+  HU37: Devolución contra compra registrada.
+  Precondición validada en mesón: artículo sin uso.
+  Reintegra saldo al alumno (MS 02) y reincorpora
+  stock físico (MS 03) vía REST sin acoplar JPA.
+  Notifica a MS 06 para resultado contable sin mover caja.
+end note
+
+note bottom of DetalleReserva
+  Cabecera–detalle: agrupa 1..* líneas.
+  El carrito de reserva (HU27) vive en React
+  y no se persiste hasta confirmar la reserva.
+end note
+@enduml

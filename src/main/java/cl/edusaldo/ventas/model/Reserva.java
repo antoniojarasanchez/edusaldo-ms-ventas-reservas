@@ -122,6 +122,7 @@ public class Reserva {
     }
 
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
     public String getCodigo() { return codigo; }
     public String getCodigoBolsa() { return codigoBolsa; }
     public Long getAlumnoId() { return alumnoId; }

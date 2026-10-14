@@ -12,12 +12,32 @@ skinparam package {
   BackgroundColor #EEF4FA
 }
 hide empty members
+skinparam nodesep 45
+skinparam ranksep 55
 title EduSaldo · MS Reservas y Entregas (8084) · db_reservas\nReservas, entregas por concepto y aviso al apoderado
 
 legend top right
   «ADM» Administrador · «ENC» Encargado · «APO» Apoderado
   «ALU» Alumno (≥ 12 años) · «SIS» sistema / otro microservicio
+  Clases <<ref MS ...>>: viven en otro microservicio; aquí solo
+  se guarda su id (sin relación JPA entre bases de datos).
 endlegend
+
+package "Referencias externas (MS Usuarios e Inventario)" #F7F7F7 {
+  class Apoderado <<ref MS Usuarios>> {
+    - id : Long
+    - correo : String
+  }
+  class Alumno <<ref MS Usuarios>> {
+    - id : Long
+    - correo : String
+  }
+  class Producto <<ref MS Inventario>> {
+    - id : Long
+    - nombre : String
+    - precioVenta : int
+  }
+}
 
 package "MS Reservas y Entregas" {
 
@@ -33,31 +53,26 @@ package "MS Reservas y Entregas" {
     MESON
   }
 
-  enum EstadoNotificacion {
-    ENVIADA
-    FALLIDA
-  }
-
-  class Reserva <<Entity>> {
-    - id : Long
-    - codigo : String {unique}
+  class Reserva {
+    - codigo : String
     - alumnoId : Long
     - creadaPorId : Long
     - fechaCreacion : LocalDateTime
     - total : int
     - estado : EstadoReserva
     - motivoCancelacion : String [0..1]
+    - preparadaPorId : Long [0..1]
+    - fechaPreparacion : LocalDateTime [0..1]
     --
     + agregarDetalle(productoId : Long, cantidad : int) : void «APO» «ALU»
     + calcularTotal() : int
     + confirmar() : void «APO» «ALU»
-    + marcarLista(encargadoId : Long) : void «ENC»
-    + cancelar(motivo : String) : void «ENC» «APO»
-    + entregar(encargadoId : Long) : Entrega «ENC»
+    + marcarListaParaRetiro(encargadoId : Long) : void «ENC»
+    + cancelar(motivo : String) : void «ENC» «APO» «ALU»
+    + confirmarRetiroYGenerarEntrega(encargadoId : Long) : Entrega «ENC»
   }
 
-  class DetalleReserva <<Entity>> {
-    - id : Long
+  class DetalleReserva {
     - productoId : Long
     - nombreProducto : String
     - cantidad : int
@@ -66,9 +81,8 @@ package "MS Reservas y Entregas" {
     + getSubtotal() : int
   }
 
-  class Entrega <<Entity>> {
-    - id : Long
-    - numero : String {unique}
+  class Entrega {
+    - numero : String
     - alumnoId : Long
     - origen : OrigenEntrega
     - fecha : LocalDateTime
@@ -76,14 +90,13 @@ package "MS Reservas y Entregas" {
     - encargadoId : Long
     --
     + calcularTotal() : int
-    + descontarDelSaldo() : void «SIS»
-    + descontarDelStock() : void «SIS»
-    + notificarApoderados() : void «SIS»
+    + cobrarSaldoEnMsSaldos() : void «SIS»
+    + descontarStockEnMsInventario() : void «SIS»
+    + notificarApoderadosPorCorreo() : void «SIS»
     + registrarEnMeson(...) : Entrega «ENC»
   }
 
-  class DetalleEntrega <<Entity>> {
-    - id : Long
+  class DetalleEntrega {
     - productoId : Long
     - nombreProducto : String
     - cantidad : int
@@ -93,8 +106,7 @@ package "MS Reservas y Entregas" {
     + getSubtotal() : int
   }
 
-  class Devolucion <<Entity>> {
-    - id : Long
+  class Devolucion {
     - fecha : LocalDateTime
     - motivo : String
     - totalReintegro : int
@@ -103,46 +115,53 @@ package "MS Reservas y Entregas" {
     + registrar(...) : void «ENC»
   }
 
-  class DetalleDevolucion <<Entity>> {
-    - id : Long
+  class DetalleDevolucion {
     - cantidad : int
     - montoReintegro : int
   }
-
-  class NotificacionEntrega <<Entity>> {
-    - id : Long
-    - apoderadoId : Long
-    - correoDestino : String
-    - fechaEnvio : LocalDateTime
-    - estado : EstadoNotificacion
-  }
 }
 
+' Referencias externas (hacia otros MS por ID)
+Reserva "0..*" ..> "1" Alumno : para (alumnoId) >
+Reserva "0..*" ..> "1" Apoderado : creada por (creadaPorId) >
+Entrega "0..*" ..> "1" Alumno : entregada a (alumnoId) >
+DetalleReserva "0..*" ..> "1" Producto : (productoId) >
+DetalleEntrega "0..*" ..> "1" Producto : (productoId) >
+
+' Relaciones internas
 Reserva "1" *-- "1..*" DetalleReserva
 Reserva "0..1" -- "0..1" Entrega : al retirarse genera >
 Entrega "1" *-- "1..*" DetalleEntrega
 Entrega "1" -- "0..*" Devolucion
 Devolucion "1" *-- "1..*" DetalleDevolucion
 DetalleDevolucion "0..*" --> "1" DetalleEntrega : revierte >
-Entrega "1" *-- "1..*" NotificacionEntrega : avisa >
+
+' Conexión de Enums con sus Clases
+Reserva ..> EstadoReserva : estado
+Entrega ..> OrigenEntrega : origen
 
 note right of Reserva
-  Reserva: la crea el Apoderado, o el Alumno
-  si tiene 12 años o más (creadaPorId).
-  Al confirmar se compromete saldo (MS Saldos)
-  y stock (MS Inventario).
-  Se entrega COMPLETA: entregar() crea la Entrega
-  y la reserva pasa a ENTREGADA.
+  Reserva: la crea el Apoderado (para cualquiera de sus
+  hijos) o el Alumno de 12 años o más (para sí mismo).
+  Al confirmar se retiene saldo (MS Saldos) y stock
+  (MS Inventario).
+  Trazabilidad (HU31 CA2): preparadaPorId y
+  fechaPreparacion registran quién armó el pedido y cuándo.
+  Se entrega COMPLETA: confirmarRetiroYGenerarEntrega()
+  crea la Entrega y la reserva pasa a ENTREGADA.
+  Pueden cancelarla ENC, APO y ALU antes del retiro.
 end note
 
 note right of Entrega
   "Entrega por concepto" (antes Venta): el dinero ya
   fue abonado, aquí solo se entregan materiales.
-  descontarDelSaldo(): pasa el monto comprometido
-  a descontado del total del alumno (MS Saldos).
-  descontarDelStock(): baja el stock físico.
-  notificarApoderados(): envía un correo a cada
-  apoderado del alumno con el detalle entregado.
+  cobrarSaldoEnMsSaldos(): MS Saldos ejecuta
+  CuentaSaldo.cobrarEntregaMateriales().
+  descontarStockEnMsInventario(): MS Inventario ejecuta
+  Producto.descontarStockPorEntrega().
+  notificarApoderadosPorCorreo(): acción interna; envía un
+  correo a cada apoderado con el detalle entregado
+  (sin persistir el estado del envío).
   Origen MESON: alumno se identifica en el mesón.
 end note
 @enduml

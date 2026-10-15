@@ -1,5 +1,6 @@
 package cl.edusaldo.ventas.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 @Entity
@@ -12,6 +13,7 @@ public class DetalleReserva {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reserva_id", nullable = false)
+    @JsonIgnore
     private Reserva reserva;
 
     @Column(name = "producto_id", nullable = false)
@@ -23,32 +25,38 @@ public class DetalleReserva {
     @Column(name = "cantidad", nullable = false)
     private int cantidad;
 
-    @Column(name = "cantidad_preparada", nullable = false)
-    private int cantidadPreparada = 0;
-
     @Column(name = "precio_unitario", nullable = false)
-    private Long precioUnitario;
+    private int precioUnitario; // Precios en CLP como int
 
     public DetalleReserva() {}
 
-    public DetalleReserva(Reserva reserva, Long productoId, String nombreProducto, int cantidad, Long precioUnitario) {
+    public DetalleReserva(Reserva reserva, Long productoId, String nombreProducto, int cantidad, int precioUnitario) {
         this.reserva = reserva;
         this.productoId = productoId;
         this.nombreProducto = nombreProducto;
         this.cantidad = cantidad;
         this.precioUnitario = precioUnitario;
-        this.cantidadPreparada = 0;
     }
 
-    public Long getSubtotal() {
-        return (long) this.cantidad * this.precioUnitario;
+    public int getSubtotal() {
+        return this.cantidad * this.precioUnitario;
     }
 
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
     public Reserva getReserva() { return reserva; }
+    public void setReserva(Reserva reserva) { this.reserva = reserva; }
+
     public Long getProductoId() { return productoId; }
+    public void setProductoId(Long productoId) { this.productoId = productoId; }
+
     public String getNombreProducto() { return nombreProducto; }
+    public void setNombreProducto(String nombreProducto) { this.nombreProducto = nombreProducto; }
+
     public int getCantidad() { return cantidad; }
-    public int getCantidadPreparada() { return cantidadPreparada; }
-    public Long getPrecioUnitario() { return precioUnitario; }
+    public void setCantidad(int cantidad) { this.cantidad = cantidad; }
+
+    public int getPrecioUnitario() { return precioUnitario; }
+    public void setPrecioUnitario(int precioUnitario) { this.precioUnitario = precioUnitario; }
 }

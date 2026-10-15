@@ -1,10 +1,9 @@
 package cl.edusaldo.ventas.controller;
 
-import cl.edusaldo.ventas.dto.CrearReservaDTO;
-import cl.edusaldo.ventas.dto.ReservaResponseDTO;
-import cl.edusaldo.ventas.dto.VentaResponseDTO;
+import cl.edusaldo.ventas.dto.*;
+import cl.edusaldo.ventas.model.EstadoReserva;
+import cl.edusaldo.ventas.model.Entrega;
 import cl.edusaldo.ventas.model.Reserva;
-import cl.edusaldo.ventas.model.Venta;
 import cl.edusaldo.ventas.service.ReservaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,12 +13,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/reservas")
-@Tag(name = "Reservas", description = "Ciclo multietapa de pedidos y preparación de útiles escolares")
+@Tag(name = "Reservas", description = "Ciclo de reserva con trazabilidad HU31 CA2, preparación y entrega")
 public class ReservaController {
 
     private final ReservaService reservaService;
@@ -29,7 +27,7 @@ public class ReservaController {
     }
 
     @PostMapping
-    @Operation(summary = "Crear nueva reserva de materiales")
+    @Operation(summary = "Crear nueva reserva de materiales (Apoderado o Alumno >= 12 años)")
     public ResponseEntity<ReservaResponseDTO> crear(@Valid @RequestBody CrearReservaDTO dto) {
         Reserva r = reservaService.crearReserva(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(new ReservaResponseDTO(r));
@@ -51,47 +49,70 @@ public class ReservaController {
         return ResponseEntity.ok(list);
     }
 
-    @PutMapping("/{id}/iniciar-preparacion")
-    @Operation(summary = "Iniciar empaque en librería (EN_PREPARACION)")
-    public ResponseEntity<ReservaResponseDTO> iniciarPreparacion(
+    @GetMapping
+    @Operation(summary = "Listar todas las reservas con filtro opcional de estado")
+    public ResponseEntity<List<ReservaResponseDTO>> listarTodas(@RequestParam(required = false) EstadoReserva estado) {
+        List<Reserva> reservas = (estado != null) ? reservaService.listarPorEstado(estado) : reservaService.listarTodas();
+        List<ReservaResponseDTO> list = reservas.stream()
+                .map(ReservaResponseDTO::new)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(list);
+    }
+
+    @RequestMapping(value = "/{id}/marcar-lista", method = {RequestMethod.POST, RequestMethod.PUT})
+    @Operation(summary = "HU31 CA2: Marcar pedido como listo para retiro (registra encargadaId y fecha)")
+    public ResponseEntity<ReservaResponseDTO> marcarLista(
             @PathVariable Long id,
-            @RequestParam Long encargadoId) {
-        Reserva r = reservaService.iniciarPreparacion(id, encargadoId);
+            @RequestBody(required = false) MarcarListaDTO body,
+            @RequestParam(required = false) Long encargadoId) {
+
+        Long finalEncargadoId = (body != null && body.getEncargadoId() != null) ? body.getEncargadoId() : encargadoId;
+        if (finalEncargadoId == null) {
+            throw new IllegalArgumentException("El ID del encargado que prepara el pedido es obligatorio.");
+        }
+
+        Reserva r = reservaService.marcarListaParaRetiro(id, finalEncargadoId);
         return ResponseEntity.ok(new ReservaResponseDTO(r));
     }
 
-    @PutMapping("/{id}/etiquetar")
-    @Operation(summary = "Generar etiqueta de bolsa con código de barras (ETIQUETA_PENDIENTE)")
-    public ResponseEntity<Map<String, String>> etiquetarBolsa(@PathVariable Long id) {
-        String codigoBolsa = reservaService.etiquetarBolsa(id);
-        return ResponseEntity.ok(Map.of("codigoBolsa", codigoBolsa));
-    }
-
-    @PutMapping("/{id}/marcar-lista")
-    @Operation(summary = "Marcar reserva rotulada lista para retiro (LISTA_PARA_RETIRO)")
-    public ResponseEntity<ReservaResponseDTO> marcarLista(
+    @RequestMapping(value = "/{id}/cancelar", method = {RequestMethod.POST, RequestMethod.PUT})
+    @Operation(summary = "Cancelar reserva antes de retiro (ENC, APO, ALU)")
+    public ResponseEntity<ReservaResponseDTO> cancelar(
             @PathVariable Long id,
-            @RequestParam Long encargadoId) {
-        Reserva r = reservaService.marcarListaParaRetiro(id, encargadoId);
+            @RequestBody(required = false) CancelarReservaDTO body,
+            @RequestParam(required = false) Long usuarioId,
+            @RequestParam(required = false) Long encargadoId,
+            @RequestParam(required = false) String motivo,
+            @RequestParam(required = false) String rol) {
+
+        String finalMotivo = (body != null && body.getMotivo() != null) ? body.getMotivo() : motivo;
+        Long finalUsuarioId = (body != null && body.getUsuarioId() != null) ? body.getUsuarioId() : (usuarioId != null ? usuarioId : encargadoId);
+        String finalRol = (body != null && body.getRol() != null) ? body.getRol() : rol;
+
+        if (finalMotivo == null || finalMotivo.isBlank()) {
+            finalMotivo = "Cancelación solicitada por usuario";
+        }
+        if (finalUsuarioId == null) {
+            finalUsuarioId = 0L;
+        }
+
+        Reserva r = reservaService.cancelarReserva(id, finalMotivo, finalUsuarioId, finalRol);
         return ResponseEntity.ok(new ReservaResponseDTO(r));
     }
 
     @PostMapping("/{id}/entregar")
-    @Operation(summary = "Entregar reserva en mesón y convertir en venta definitiva")
-    public ResponseEntity<VentaResponseDTO> entregar(
+    @Operation(summary = "HU33: Retiro de materiales y confirmación de Entrega formal")
+    public ResponseEntity<EntregaResponseDTO> entregar(
             @PathVariable Long id,
-            @RequestParam Long encargadoId) {
-        Venta v = reservaService.entregarReserva(id, encargadoId);
-        return ResponseEntity.ok(new VentaResponseDTO(v));
-    }
+            @RequestBody(required = false) ConfirmarEntregaDTO body,
+            @RequestParam(required = false) Long encargadoId) {
 
-    @PutMapping("/{id}/cancelar")
-    @Operation(summary = "Cancelar reserva antes de entrega")
-    public ResponseEntity<ReservaResponseDTO> cancelar(
-            @PathVariable Long id,
-            @RequestParam Long encargadoId,
-            @RequestParam String motivo) {
-        Reserva r = reservaService.cancelarReserva(id, encargadoId, motivo);
-        return ResponseEntity.ok(new ReservaResponseDTO(r));
+        Long finalEncargadoId = (body != null && body.getEncargadoId() != null) ? body.getEncargadoId() : encargadoId;
+        if (finalEncargadoId == null) {
+            finalEncargadoId = 1L;
+        }
+
+        Entrega entrega = reservaService.entregarReserva(id, finalEncargadoId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new EntregaResponseDTO(entrega));
     }
 }

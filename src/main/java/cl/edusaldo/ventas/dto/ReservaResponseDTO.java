@@ -10,11 +10,15 @@ import java.util.stream.Collectors;
 public class ReservaResponseDTO {
     private Long id;
     private String codigo;
-    private String codigoBolsa;
     private Long alumnoId;
-    private Long apoderadoId;
-    private Long total;
+    private Long creadaPorId;
+    private Long apoderadoId; // Retrocompatibilidad
+    private int total;
     private EstadoReserva estado;
+    private String motivoCancelacion;
+    private Long canceladaPorId;
+    private Long preparadaPorId; // HU31 CA2
+    private LocalDateTime fechaPreparacion; // HU31 CA2
     private LocalDateTime fechaCreacion;
     private List<ItemReservaResponseDTO> items;
 
@@ -22,22 +26,22 @@ public class ReservaResponseDTO {
         private Long productoId;
         private String nombreProducto;
         private int cantidad;
-        private Long precioUnitario;
-        private Long subtotal;
+        private int precioUnitario;
+        private int subtotal;
 
-        public ItemReservaResponseDTO(Long productoId, String nombreProducto, int cantidad, Long precioUnitario) {
+        public ItemReservaResponseDTO(Long productoId, String nombreProducto, int cantidad, int precioUnitario) {
             this.productoId = productoId;
             this.nombreProducto = nombreProducto;
             this.cantidad = cantidad;
             this.precioUnitario = precioUnitario;
-            this.subtotal = (long) cantidad * precioUnitario;
+            this.subtotal = cantidad * precioUnitario;
         }
 
         public Long getProductoId() { return productoId; }
         public String getNombreProducto() { return nombreProducto; }
         public int getCantidad() { return cantidad; }
-        public Long getPrecioUnitario() { return precioUnitario; }
-        public Long getSubtotal() { return subtotal; }
+        public int getPrecioUnitario() { return precioUnitario; }
+        public int getSubtotal() { return subtotal; }
     }
 
     public ReservaResponseDTO() {}
@@ -45,11 +49,15 @@ public class ReservaResponseDTO {
     public ReservaResponseDTO(Reserva r) {
         this.id = r.getId();
         this.codigo = r.getCodigo();
-        this.codigoBolsa = r.getCodigoBolsa();
         this.alumnoId = r.getAlumnoId();
-        this.apoderadoId = r.getApoderadoId();
+        this.creadaPorId = r.getCreadaPorId();
+        this.apoderadoId = r.getCreadaPorId();
         this.total = r.getTotal();
         this.estado = r.getEstado();
+        this.motivoCancelacion = r.getMotivoCancelacion();
+        this.canceladaPorId = r.getCanceladaPorId();
+        this.preparadaPorId = r.getPreparadaPorId();
+        this.fechaPreparacion = r.getFechaPreparacion();
         this.fechaCreacion = r.getFechaCreacion();
         if (r.getDetalles() != null) {
             this.items = r.getDetalles().stream()
@@ -60,11 +68,15 @@ public class ReservaResponseDTO {
 
     public Long getId() { return id; }
     public String getCodigo() { return codigo; }
-    public String getCodigoBolsa() { return codigoBolsa; }
     public Long getAlumnoId() { return alumnoId; }
+    public Long getCreadaPorId() { return creadaPorId; }
     public Long getApoderadoId() { return apoderadoId; }
-    public Long getTotal() { return total; }
+    public int getTotal() { return total; }
     public EstadoReserva getEstado() { return estado; }
+    public String getMotivoCancelacion() { return motivoCancelacion; }
+    public Long getCanceladaPorId() { return canceladaPorId; }
+    public Long getPreparadaPorId() { return preparadaPorId; }
+    public LocalDateTime getFechaPreparacion() { return fechaPreparacion; }
     public LocalDateTime getFechaCreacion() { return fechaCreacion; }
     public List<ItemReservaResponseDTO> getItems() { return items; }
 }

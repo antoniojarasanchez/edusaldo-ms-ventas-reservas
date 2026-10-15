@@ -18,16 +18,19 @@ public class ItemReservaDTO {
 
     @NotNull(message = "El precio unitario es obligatorio")
     @Positive(message = "El precio unitario debe ser positivo")
-    private Long precioUnitario;
+    private Integer precioUnitario; // CLP en int
 
     public ItemReservaDTO() {}
 
     public Long getProductoId() { return productoId; }
     public void setProductoId(Long productoId) { this.productoId = productoId; }
+
     public String getNombreProducto() { return nombreProducto; }
     public void setNombreProducto(String nombreProducto) { this.nombreProducto = nombreProducto; }
+
     public int getCantidad() { return cantidad; }
     public void setCantidad(int cantidad) { this.cantidad = cantidad; }
-    public Long getPrecioUnitario() { return precioUnitario; }
-    public void setPrecioUnitario(Long precioUnitario) { this.precioUnitario = precioUnitario; }
+
+    public Integer getPrecioUnitario() { return precioUnitario; }
+    public void setPrecioUnitario(Integer precioUnitario) { this.precioUnitario = precioUnitario; }
 }

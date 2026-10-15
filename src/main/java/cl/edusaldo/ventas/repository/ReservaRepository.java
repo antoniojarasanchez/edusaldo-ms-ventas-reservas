@@ -13,4 +13,5 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     Optional<Reserva> findByCodigo(String codigo);
     List<Reserva> findByAlumnoId(Long alumnoId);
     List<Reserva> findByEstado(EstadoReserva estado);
+    List<Reserva> findAllByOrderByFechaCreacionDesc();
 }

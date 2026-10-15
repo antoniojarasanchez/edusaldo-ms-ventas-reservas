@@ -4,9 +4,9 @@ import cl.edusaldo.ventas.dto.CrearReservaDTO;
 import cl.edusaldo.ventas.dto.ItemReservaDTO;
 import cl.edusaldo.ventas.model.EstadoReserva;
 import cl.edusaldo.ventas.model.Reserva;
-import cl.edusaldo.ventas.model.Venta;
+import cl.edusaldo.ventas.model.Entrega;
+import cl.edusaldo.ventas.repository.EntregaRepository;
 import cl.edusaldo.ventas.repository.ReservaRepository;
-import cl.edusaldo.ventas.repository.VentaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,44 +16,38 @@ import java.util.List;
 public class ReservaService {
 
     private final ReservaRepository reservaRepository;
-    private final VentaRepository ventaRepository;
+    private final EntregaRepository entregaRepository;
 
-    public ReservaService(ReservaRepository reservaRepository, VentaRepository ventaRepository) {
+    public ReservaService(ReservaRepository reservaRepository, EntregaRepository entregaRepository) {
         this.reservaRepository = reservaRepository;
-        this.ventaRepository = ventaRepository;
+        this.entregaRepository = entregaRepository;
     }
 
     @Transactional
     public Reserva crearReserva(CrearReservaDTO dto) {
-        long total = dto.getItems().stream()
-                .mapToLong(i -> (long) i.getCantidad() * i.getPrecioUnitario())
+        if (dto.getItems() == null || dto.getItems().isEmpty()) {
+            throw new IllegalArgumentException("La reserva debe contener al menos un material.");
+        }
+
+        int total = dto.getItems().stream()
+                .mapToInt(i -> i.getCantidad() * i.getPrecioUnitario())
                 .sum();
 
         String codigo = "RES-" + (1000 + (int)(Math.random() * 9000));
-        Reserva r = new Reserva(codigo, dto.getAlumnoId(), dto.getApoderadoId(), total);
+        Reserva r = new Reserva(codigo, dto.getAlumnoId(), dto.getCreadaPorId(), total);
 
         for (ItemReservaDTO item : dto.getItems()) {
             r.agregarDetalle(item.getProductoId(), item.getNombreProducto(), item.getCantidad(), item.getPrecioUnitario());
         }
 
+        r.confirmar();
         return reservaRepository.save(r);
     }
 
-    @Transactional
-    public Reserva iniciarPreparacion(Long reservaId, Long encargadoId) {
-        Reserva r = obtenerPorId(reservaId);
-        r.iniciarPreparacion(encargadoId);
-        return reservaRepository.save(r);
-    }
-
-    @Transactional
-    public String etiquetarBolsa(Long reservaId) {
-        Reserva r = obtenerPorId(reservaId);
-        String codigoBolsa = r.generarEtiquetaBolsa();
-        reservaRepository.save(r);
-        return codigoBolsa;
-    }
-
+    /**
+     * HU31 CA2: Marcar pedido como lista para retiro registrando mandatoriamente
+     * encargadaId y fecha de preparación.
+     */
     @Transactional
     public Reserva marcarListaParaRetiro(Long reservaId, Long encargadoId) {
         Reserva r = obtenerPorId(reservaId);
@@ -61,19 +55,25 @@ public class ReservaService {
         return reservaRepository.save(r);
     }
 
+    /**
+     * HU35 y HU48: Cancelación multi-rol (ENC, APO, ALU).
+     */
     @Transactional
-    public Venta entregarReserva(Long reservaId, Long encargadoId) {
+    public Reserva cancelarReserva(Long reservaId, String motivo, Long usuarioId, String rol) {
         Reserva r = obtenerPorId(reservaId);
-        Venta v = r.entregar(encargadoId);
-        reservaRepository.save(r);
-        return ventaRepository.save(v);
+        r.cancelar(motivo, usuarioId, rol);
+        return reservaRepository.save(r);
     }
 
+    /**
+     * HU33: Retiro de reserva y generación formal de Entrega por concepto.
+     */
     @Transactional
-    public Reserva cancelarReserva(Long reservaId, Long encargadoId, String motivo) {
+    public Entrega entregarReserva(Long reservaId, Long encargadoId) {
         Reserva r = obtenerPorId(reservaId);
-        r.cancelar(encargadoId, motivo);
-        return reservaRepository.save(r);
+        Entrega entrega = r.confirmarRetiroYGenerarEntrega(encargadoId);
+        reservaRepository.save(r);
+        return entregaRepository.save(entrega);
     }
 
     @Transactional(readOnly = true)
@@ -89,6 +89,11 @@ public class ReservaService {
 
     @Transactional(readOnly = true)
     public List<Reserva> listarTodas() {
-        return reservaRepository.findAll();
+        return reservaRepository.findAllByOrderByFechaCreacionDesc();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Reserva> listarPorEstado(EstadoReserva estado) {
+        return reservaRepository.findByEstado(estado);
     }
 }

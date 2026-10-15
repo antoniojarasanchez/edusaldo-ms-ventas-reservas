@@ -1,4 +1,4 @@
-@startuml 04_ms_ventas_reservas
+@startuml 04_ms_reservas_entregas
 skinparam classAttributeIconSize 0
 skinparam shadowing false
 skinparam linetype polyline
@@ -35,7 +35,7 @@ package "Referencias externas (MS Usuarios e Inventario)" #F7F7F7 {
   class Producto <<ref MS Inventario>> {
     - id : Long
     - nombre : String
-    - precioVenta : int
+    - precio : int
   }
 }
 
@@ -70,6 +70,7 @@ package "MS Reservas y Entregas" {
     + marcarListaParaRetiro(encargadoId : Long) : void «ENC»
     + cancelar(motivo : String) : void «ENC» «APO» «ALU»
     + confirmarRetiroYGenerarEntrega(encargadoId : Long) : Entrega «ENC»
+    + notificarApoderadosPorCorreo() : void «SIS»
   }
 
   class DetalleReserva {
@@ -122,9 +123,10 @@ package "MS Reservas y Entregas" {
 }
 
 ' Referencias externas (hacia otros MS por ID)
-Reserva "0..*" ..> "1" Alumno : para (alumnoId) >
-Reserva "0..*" ..> "1" Apoderado : creada por (creadaPorId) >
+Reserva "0..*" ..> "1" Alumno : destinatario (alumnoId) >
+Reserva "0..*" ..> "1" Apoderado : notifica a (vía alumnoId) >
 Entrega "0..*" ..> "1" Alumno : entregada a (alumnoId) >
+Entrega "0..*" ..> "1" Apoderado : notifica a (vía alumnoId) >
 DetalleReserva "0..*" ..> "1" Producto : (productoId) >
 DetalleEntrega "0..*" ..> "1" Producto : (productoId) >
 
@@ -145,6 +147,10 @@ note right of Reserva
   hijos) o el Alumno de 12 años o más (para sí mismo).
   Al confirmar se retiene saldo (MS Saldos) y stock
   (MS Inventario).
+  notificarApoderadosPorCorreo(): cuando un alumno
+  reserva o el encargado marca LISTA_PARA_RETIRO,
+  consulta en MS Usuarios a los apoderados del alumno
+  y les remite la notificación por correo.
   Trazabilidad (HU31 CA2): preparadaPorId y
   fechaPreparacion registran quién armó el pedido y cuándo.
   Se entrega COMPLETA: confirmarRetiroYGenerarEntrega()
